@@ -5,6 +5,7 @@ from engine import ProcessingError
 from estimate import estimate_sheets, finite_in_range, MAX_TOTAL_PIECES, Cancelled
 from laser_presets import speed_m_min
 from nest_shape import NestCancelled, QUALITY, ROTATIONS, nest
+import sparrow_nest
 
 DENSITIES = {'steel': 7850, 'stainless': 8000, 'aluminum': 2700}
 MAX_PREVIEW_SHEETS = 60
@@ -60,7 +61,52 @@ def _used_length(placements, parts_by_id, width, height):
     return extent
 
 
-def _plan_group(batch, req, width, height, method, on_progress, should_stop):
+def _last_used(res, width, height):
+    sheets = res['sheets']
+    if not sheets:
+        return 0.0
+    idx = 3 if height >= width else 2
+    return max(b[idx] for b in sheets[-1].bounds) if len(sheets[-1].placed) else 0.0
+
+
+def _best_shape_nest(items, width, height, margin, gap, rotation, part_in_part, quality,
+                     on_progress, should_stop, live, engine='auto'):
+    """Run the sparrow multi-sheet optimiser (if bundled) and DXFsmart's own
+    raster nester, keep whichever needs fewer sheets / shorter last sheet."""
+    prog = (lambda lo, hi: (lambda f, text=None: on_progress(lo + (hi - lo) * f, text))) if on_progress else (lambda lo, hi: None)
+    candidates = []
+    use_sparrow = engine in ('auto', 'sparrow') and sparrow_nest.available()
+    if use_sparrow:
+        try:
+            sp = sparrow_nest.SparrowSheetNester(items, width, height, margin, gap, rotation=rotation,
+                                                 part_in_part=part_in_part, quality=quality,
+                                                 progress=prog(0.1, 0.8), should_stop=should_stop, live=live).run()
+            if 'sheets' in sp:
+                candidates.append(sp)
+        except NestCancelled:
+            raise
+        except Exception as exc:  # never lose a plan because of the external optimiser
+            print('sparrow hata:', exc, flush=True)
+    classic_q = 'fast' if candidates else quality
+    lo = 0.8 if candidates or use_sparrow else 0.1
+    p = prog(lo, 1.0)
+    res = nest(items, width, height, margin, gap, rotation=rotation, part_in_part=part_in_part, quality=classic_q,
+               progress=(lambda d, t: p(d / max(1, t), 'DXFsmart raster motoru karşılaştırıyor')) if on_progress else None,
+               should_stop=should_stop)
+    if 'sheets' in res:
+        res['engine'] = 'dxfsmart'
+        candidates.append(res)
+    if not candidates:
+        return res
+    for c in candidates:
+        c.setdefault('engine', 'sparrow')
+    best = min(candidates, key=lambda c: (len(c['sheets']), round(_last_used(c, width, height), 1)))
+    best['compared'] = [{'engine': c['engine'], 'sheets': len(c['sheets']),
+                         'lastUsedMm': round(_last_used(c, width, height), 1)} for c in candidates]
+    return best
+
+
+def _plan_group(batch, req, width, height, method, on_progress, should_stop, live=None):
     body = {**req, 'items': [{'id': p.id, 'quantity': p.quantity} for p in batch]}
     rotation = str(req.get('rotation', '15'))
     if rotation not in ROTATIONS:
@@ -84,10 +130,9 @@ def _plan_group(batch, req, width, height, method, on_progress, should_stop):
         gap = finite_in_range('Parça boşluğu', req.get('gap', 5), 0, 50)
         margin = finite_in_range('Kenar payı', req.get('margin', 10), 0, 100)
         items = [(p.id, p.shape, p.quantity) for p in batch]
-        res = nest(items, width, height, margin, gap, rotation=rotation,
-                   part_in_part=bool(req.get('partInPart', True)), quality=quality,
-                   progress=(lambda d, t: on_progress(0.1 + 0.9 * d / max(1, t))) if on_progress else None,
-                   should_stop=should_stop)
+        part_in_part = bool(req.get('partInPart', True))
+        res = _best_shape_nest(items, width, height, margin, gap, rotation, part_in_part, quality,
+                               on_progress, should_stop, live, req.get('engine', 'auto'))
         if 'sheets' in res:
             shape_sheets = []
             for s in res['sheets']:
@@ -96,7 +141,8 @@ def _plan_group(batch, req, width, height, method, on_progress, should_stop):
                                                     for pl in s.placed],
                                      'netUtilization': round(100 * s.net_area / (width * height), 1)})
             shape_info = {'strategy': res['strategy'], 'tried': res['tried'], 'seconds': res['seconds'],
-                          'cellMm': res['cell'], 'sheets': len(shape_sheets)}
+                          'cellMm': res['cell'], 'sheets': len(shape_sheets), 'engine': res.get('engine', 'dxfsmart'),
+                          'compared': res.get('compared', [])}
             rect_key = (len(full_rect), _used_length(full_rect[-1]['placements'], by_id, width, height))
             shape_key = (len(shape_sheets), _used_length(shape_sheets[-1]['placements'], by_id, width, height))
             if shape_key <= rect_key:
@@ -133,7 +179,7 @@ def _plan_group(batch, req, width, height, method, on_progress, should_stop):
     return plan
 
 
-def estimate_job(parts, req, progress=None, should_stop=None):
+def estimate_job(parts, req, progress=None, should_stop=None, live=None):
     selected = planned_parts(parts, req)
     speed = finite_in_range('Kesim hızı (mm/dk)', req.get('cuttingSpeed', 3000), 1, 200000)
     pierce = finite_in_range('Delme süresi (sn)', req.get('pierceSeconds', 1.5), 0, 120)
@@ -165,12 +211,12 @@ def estimate_job(parts, req, progress=None, should_stop=None):
     plans = []; mass = 0; items = []; total_minutes = 0; total_length = 0; total_pierces = 0
     ordered = sorted(groups.items())
     for group_index, (thickness, batch) in enumerate(ordered):
-        def on_progress(fraction, gi=group_index, th=thickness):
+        def on_progress(fraction, text=None, gi=group_index, th=thickness):
             if progress:
                 pct = round(5 + 90 * (gi + min(1, fraction)) / max(1, len(ordered)))
-                progress('placing', pct, f'{th:g} mm kalınlık, yerleşim %{round(100 * min(1, fraction))}')
+                progress('placing', pct, f'{th:g} mm · ' + (text or f'yerleşim %{round(100 * min(1, fraction))}'))
         try:
-            plan = _plan_group(batch, req, width, height, method, on_progress, should_stop)
+            plan = _plan_group(batch, req, width, height, method, on_progress, should_stop, live)
         except NestCancelled as exc:
             raise Cancelled('Yerleşim iptal edildi.') from exc
         kg = sum(p.shape.area * p.thickness_mm * p.quantity * density / 1e9 for p in batch)

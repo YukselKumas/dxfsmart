@@ -321,3 +321,12 @@ legend+*{clear:both}
 #inspSvg:focus{outline:none}
 .fig dd{white-space:nowrap;font-size:clamp(20px,1.9vw,28px)}
 .fig.lead dd{font-size:clamp(24px,2.3vw,34px)}
+
+/* v1.1 live optimiser simulation */
+.progress-card:has(.live-sim:not([hidden])){max-width:min(1180px,96%);margin-top:4vh}
+.live-sim{margin:6px 0 0;display:grid;gap:10px;text-align:left}
+.live-sim figcaption{font-size:12.5px;color:var(--text-2)}
+.live-sim figcaption b{color:#ffd6a3}
+.live-frame{border-radius:16px;padding:12px;background:linear-gradient(135deg,rgba(124,58,237,.18),rgba(236,72,153,.10)),#0b0f22;
+  border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 60px -30px rgba(236,72,153,.55),inset 0 0 0 1px rgba(255,176,59,.06)}
+.live-frame img{display:block;width:100%;height:auto;max-height:60vh;object-fit:contain}

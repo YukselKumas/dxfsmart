@@ -1,7 +1,7 @@
 name: Windows exe
 
 # Builds DXFsmart.exe on every push to main and publishes it as the GitHub
-# Release "v<VERSION>" (VERSION is read from run.py). Bump VERSION in run.py
+# Release "v<VERSION>" (VERSION is read from version.py). Bump VERSION in version.py
 # for a new release; pushing without a bump refreshes the same release.
 on:
   push:
@@ -33,6 +33,21 @@ jobs:
       - name: Install
         run: python -m pip install -r requirements.txt pyinstaller pytest httpx
 
+      - name: Rust toolchain
+        run: rustup update stable --no-self-update && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: third_party/sparrow
+
+      - name: Build sparrow optimiser
+        shell: pwsh
+        run: |
+          cd third_party/sparrow
+          cargo build --release --features=live_svg --bin sparrow
+          New-Item -ItemType Directory -Force ../../bin | Out-Null
+          Copy-Item target/release/sparrow.exe ../../bin/sparrow.exe
+
       - name: Test
         shell: pwsh
         run: |
@@ -46,6 +61,7 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed --name DXFsmart
           --icon assets/dxfsmart.ico
           --add-data "static;static"
+          --add-binary "bin/sparrow.exe;."
           --collect-submodules uvicorn
           --collect-submodules ezdxf
           --collect-submodules webview
@@ -83,3 +99,5 @@ jobs:
             Bu sürümden sonra yeni sürümler program içinden tek tıkla güncellenir.
             İlk açılışta Windows "bilgisayarınızı korudu" uyarısı verebilir: **Ek bilgi → Yine de çalıştır**.
             Program bu bilgisayarda çalışır; DXF dosyalarınız internete yüklenmez.
+
+            Yerleşim optimizasyonu [sparrow](https://github.com/JeroenGar/sparrow) (MIT) ve [jagua-rs](https://github.com/JeroenGar/jagua-rs) (MPL-2.0) kullanır; değiştirilmiş kaynak kodu `third_party/sparrow` klasöründedir.

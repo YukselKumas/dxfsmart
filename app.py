@@ -216,7 +216,8 @@ def _run_nesting(task_id,parts,request):
     try:
         if stopped(): raise Cancelled('Yerleşim iptal edildi.')
         update('preparing',3,'Parçalar ve adetler kontrol ediliyor')
-        result=estimate_job(parts,request,update,stopped)
+        with NESTING_LOCK: live=NESTING_TASKS[task_id].setdefault('_live',{})
+        result=estimate_job(parts,request,update,stopped,live)
         update('finalizing',96,'Ağırlık ve süre raporu hazırlanıyor')
         with NESTING_LOCK:
             NESTING_TASKS[task_id].update(stage='complete',progress=100,result=result)
@@ -259,7 +260,20 @@ def nesting_status(task_id: str):
     with NESTING_LOCK:
         task=NESTING_TASKS.get(task_id)
         if task is None: raise HTTPException(404,'Yerleşim oturumu bulunamadı; tekrar başlatın.')
-        return {k:v for k,v in task.items() if k not in ('created','cancel','jobId')}
+        out={k:v for k,v in task.items() if k not in ('created','cancel','jobId','_live')}
+        out['live']=bool(task.get('_live',{}).get('runner'))
+        return out
+
+
+@app.get('/api/nesting-jobs/{task_id}/live')
+def nesting_live(task_id: str):
+    """Current layout of the running optimiser (sparrow live SVG) for the simulation view."""
+    with NESTING_LOCK:
+        task=NESTING_TASKS.get(task_id)
+        runner=(task or {}).get('_live',{}).get('runner')
+    svg=runner.styled_live_svg() if runner else None
+    if not svg: return Response(status_code=204)
+    return Response(svg,media_type='image/svg+xml',headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/nesting-jobs/{task_id}/dxf')

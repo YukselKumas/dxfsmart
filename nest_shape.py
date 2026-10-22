@@ -801,6 +801,66 @@ class Nester:
             return unit_sheets, label
         return head + best_tail, label + " + son plaka iyileştirmesi"
 
+    def fill(self, obstacle, order=None):
+        """Place as many units as possible on ONE sheet that already holds
+        ``obstacle`` (a shapely geometry in sheet coordinates).
+
+        Used for (a) part-in-part kits: the obstacle is everything outside a
+        host's hole, and (b) filling the gaps a strip/sheet layout left open.
+        Returns {unit_key: count} placed and the part-level Placements.
+        """
+        with sfft.set_workers(-1):
+            self._prepare_units()
+            sheet = Sheet(self.ny, self.nx)
+            if obstacle is not None and not obstacle.is_empty:
+                buf = obstacle.buffer(self.d, quad_segs=8)
+                occ = _raster(buf, self.x0, self.y0, self.r, self.ny, self.nx).astype(np.float32)
+                sheet.occ = np.maximum(sheet.occ, occ)
+                sheet.occ_pad[1:-1, 1:-1] = sheet.occ
+                sheet.geoms.append(obstacle)
+                sheet.bounds = np.vstack([sheet.bounds, np.array(obstacle.bounds)[None, :]])
+            uset = self.unit_sets["single"]
+            keys = order or sorted(uset, key=lambda k: -uset[k].area)
+            placed = collections.Counter()
+            self.cw = self.CONTACT_WEIGHT
+            self.y_primary = self.long_y
+            for key in keys:
+                u = uset[key]
+                if u.quantity <= 0:
+                    continue
+                maps = self._group_maps(sheet, u.variants)
+                while placed[key] < u.quantity:
+                    if self.should_stop and self.should_stop():
+                        raise NestCancelled()
+                    best = self._best(maps, u.variants, "edge", self._used_length(sheet))
+                    if best is None:
+                        break
+                    _, v, i, j = best
+                    X = self.x0 + j * self.r + self.d
+                    Y = self.y0 + i * self.r + self.d
+                    geom, dx, dy = self._compact(translate(v.shape, X, Y), sheet)
+                    pl = Placement(key, v.angle, X - dx - v.off[0], Y - dy - v.off[1], geom)
+                    sheet.geoms.append(geom)
+                    sheet.bounds = np.vstack([sheet.bounds, np.array(geom.bounds)[None, :]])
+                    sheet.placed.append(pl)
+                    self._mark(sheet, geom, maps, u.variants)
+                    placed[key] += 1
+            return placed, sheet.placed
+
+    def _prepare_units(self):
+        """Kernels for single units only (no pairing) - cheap set-up for fill()."""
+        self.components = {}
+        base = {}
+        for key, shape, qty in self.items:
+            if qty <= 0:
+                continue
+            u = Unique(key, shape, qty, shape.area)
+            self._kernelize(u)
+            if self._fits(u):
+                base[key] = u
+            self.components[key] = [(key, 0.0, 0.0, 0.0)]
+        self.unit_sets = {"single": base}
+
     def _expand(self, unit_sheets):
         """Unit placements (singles and pairs) -> one placement per real part."""
         shapes = {u.key: u.shape for u in self.unit_sets["single"].values()}

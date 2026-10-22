@@ -1,5 +1,12 @@
 # DXFsmart sürüm notları
 
+## 1.1.0
+- **Yeni yerleşim motoru:** açık kaynak sparrow optimizer'ı (MIT; jagua-rs çarpışma motoru, MPL-2.0) programa gömüldü. sparrow sınırsız tek bir şerit için yazılmıştı. Plaka sınırları şeride yasak bantlar olarak eklendi, böylece optimizer tek aramada hem plaka sayısını hem son plakada kullanılan boyu küçültüyor; hiçbir parça plaka sınırını geçemiyor.
+- **Canlı simülasyon:** yerleşim hesaplanırken optimizer'ın denediği yerleşimler ekranda izlenir. Her satır bir plakadır; kırmızı kesik çizgiler o an çözülen çakışmalardır. İlerleme metni kaç plakaya sığdığını ve doluluğu gösterir.
+- **Deneyerek en iyiyi seçer:** sparrow sonucu DXFsmart'ın kendi raster motoruyla karşılaştırılır; daha az plaka, eşitse son plakada daha kısa boy kullanan seçilir. Sonuç ekranında iki motorun skoru yazar.
+- **Delik içi kitleri:** delikli parçaların (ör. flanş) delikleri önce küçük parçalarla doldurulur; flanş ve içindekiler tek birim olarak yerleşir.
+- Örnek projede (210 parça, 1500×3000): 3 plaka, son plaka 2931 mm yerine 2620 mm (Dengeli) / 2507 mm (En iyi sonuç). Daha çok çekirdekli bilgisayarlarda arama daha hızlı ilerler.
+
 ## 1.0.0
 - **Masaüstü uygulaması:** kendi penceresinde açılır (Edge WebView2). Tarayıcı ve konsol penceresi yok; pencere kapanınca program kapanır.
 - **Tek tıkla güncelleme:** açılışta GitHub Releases kontrol edilir, yeni sürüm varsa üstte bildirim çıkar; "Güncelle" yeni exe'yi indirir, eskisinin yerine koyar ve yeniden açar. Ücretsiz, hesap gerektirmez.

@@ -223,13 +223,41 @@ function renderIdle(message = '') {
   $('#viewNest').innerHTML = `<div class="idle"><h3>${message ? 'Ayarlar değişti' : 'Yerleşim için hazır'}</h3>
     <p>${esc(message || 'Sağdan malzeme, sac ve makine ayarlarını kontrol et; adetleri soldaki listeden düzenle. Hesapla dediğinde parçalar gerçek konturlarıyla, seçtiğin açılarda birbirine geçirilerek yerleştirilir.')}</p></div>`;
 }
-function showProgress(s) {
+function showProgress(s, taskId) {
   const pct = clamp(s.progress || 0, 0, 100);
   const title = { queued: 'Sırada', preparing: 'Parçalar hazırlanıyor', placing: 'Parçalar yerleştiriliyor', finalizing: 'Rapor hazırlanıyor' }[s.stage] || 'Hazırlanıyor';
-  $('#viewNest').innerHTML = `<div class="progress-card" role="status" aria-live="polite"><h3>${title}</h3>
-    <p>${esc(s.detail || 'Açılar ve parça sıraları karşılaştırılıyor.')}</p>
-    <div class="heat" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
-    <span class="heat-label">%${pct}. Ayar değiştirirsen bu hesap durur.</span></div>`;
+  let card = $('#viewNest .progress-card');
+  if (!card) {
+    $('#viewNest').innerHTML = `<div class="progress-card" role="status" aria-live="polite"><h3 class="pc-title"></h3>
+      <p class="pc-detail"></p>
+      <div class="heat" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+      <span class="heat-label"></span>
+      <figure class="live-sim" hidden><figcaption><b>Canlı simülasyon</b> · optimizer parçaları her adımda yeniden diziyor; kırmızı kesik çizgiler o an çözülmekte olan çakışmalar. Her satır bir plaka.</figcaption>
+        <div class="live-frame"><img alt="Canlı yerleşim denemesi"></div></figure></div>`;
+    card = $('#viewNest .progress-card');
+  }
+  card.querySelector('.pc-title').textContent = title;
+  card.querySelector('.pc-detail').textContent = s.detail || 'Açılar ve parça sıraları karşılaştırılıyor.';
+  card.querySelector('.heat').setAttribute('aria-valuenow', pct);
+  card.querySelector('.heat i').style.width = pct + '%';
+  card.querySelector('.heat-label').textContent = `%${pct}. Ayar değiştirirsen bu hesap durur.`;
+  if (s.live && taskId) pullLive(taskId, card);
+}
+let liveBusy = false, liveUrl = null;
+async function pullLive(taskId, card) {
+  if (liveBusy) return; liveBusy = true;
+  try {
+    const r = await fetch(`/api/nesting-jobs/${encodeURIComponent(taskId)}/live`, { cache: 'no-store' });
+    if (r.status !== 200) return;
+    const blob = await r.blob(), url = URL.createObjectURL(blob), img = new Image();
+    img.onload = () => {
+      const fig = card.querySelector('.live-sim'), target = fig && fig.querySelector('img');
+      if (!target) { URL.revokeObjectURL(url); return; }
+      fig.hidden = false; target.src = url;
+      if (liveUrl) URL.revokeObjectURL(liveUrl); liveUrl = url;
+    };
+    img.src = url;
+  } catch (e) { /* the live view is optional */ } finally { liveBusy = false; }
 }
 async function calculate() {
   if (!state.data) return;
@@ -253,7 +281,7 @@ async function calculate() {
         $('#downloadNest').disabled = false; renderPlan(); status('Yerleşim hazır. Bir parçaya tıklayarak ölçülerini kontrol edebilirsin.');
         break;
       }
-      showProgress(s); await new Promise(res => setTimeout(res, 400));
+      showProgress(s, job.taskId); await new Promise(res => setTimeout(res, 450));
     }
   } catch (e) {
     if (idx === state.requestCount) $('#viewNest').innerHTML = `<div class="alert"><b>Yerleşim hesaplanamadı.</b>${esc(e.message)}</div>`;
@@ -306,7 +334,10 @@ function renderGroup() {
       ${g.sheets.length > 1 ? `<div class="thumbs">${g.sheets.map((s, i) => `<button type="button" class="sheet-thumb ${i === state.sheetIndex ? 'on' : ''}" data-sheet="${i}">${sheetSvg(g, s, 'sheet-svg mini', false, false)}<span>${i + 1}. plaka, %${fmt(s.netUtilization, 0)}</span></button>`).join('')}</div>` : ''}
     </div>
     <p class="method-note">Son plakada ${fmt(g.lastSheetUsedMm, 0)} mm kullanıldı; ${fmt(g.lastSheetRemnantMm, 0)} mm × ${fmt(Math.min(e.sheetWidth, e.sheetHeight), 0)} mm şerit artık sac olarak kalır (sarı kesikli çizgi).
-    ${sn ? ` ${sn.tried.length} strateji denendi, en iyisi “${esc(sn.strategy)}” (${fmt(sn.seconds, 1)} sn, ${fmt(sn.cellMm, 1)} mm arama ızgarası; son yerleşim kesin geometriyle sıkıştırıldı ve ${fmt(g.gap, 1)} mm aralık doğrulandı).` : ''}
+    ${sn ? (sn.engine === 'sparrow'
+      ? ` Kazanan: sparrow optimizer, “${esc(sn.strategy)}” (${fmt(sn.seconds, 1)} sn; ${fmt(g.gap, 1)} mm aralık kesin geometriyle doğrulandı).`
+      : ` ${sn.tried.length} strateji denendi, en iyisi “${esc(sn.strategy)}” (${fmt(sn.seconds, 1)} sn, ${fmt(sn.cellMm, 1)} mm arama ızgarası; ${fmt(g.gap, 1)} mm aralık doğrulandı).`)
+      + (sn.compared && sn.compared.length > 1 ? ` Karşılaştırma: ${sn.compared.map(c => `${c.engine === 'sparrow' ? 'sparrow' : 'DXFsmart raster'} ${c.sheets} plaka, son plaka ${fmt(c.lastUsedMm, 0)} mm`).join(' · ')}.` : '') : ''}
     Dikdörtgen yöntemle bu kalınlık ${g.rectSheets} plaka. Süreye sac yükleme ve boşaltma dahil değil.</p>`;
   $('#sheetPrev').disabled = state.sheetIndex === 0; $('#sheetNext').disabled = state.sheetIndex === g.sheets.length - 1;
 }
