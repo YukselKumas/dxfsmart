@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#15293a">
+<title>DXFsmart</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2315293a'/%3E%3Cpath d='M7 9h12l6 6v8H13l-6-6z' fill='none' stroke='%23c9922a' stroke-width='2.4'/%3E%3Ccircle cx='17' cy='16' r='2.6' fill='%23c9922a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/studio.css?v=09">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#" aria-label="DXFsmart ana ekran">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 8h14l8 8v8H13L5 16z"/><circle cx="16" cy="16" r="3"/></svg>
+    <span>DXFsmart</span>
+  </a>
+  <div class="job" id="job" hidden>
+    <span class="job-name" id="projectTitle">Proje</span>
+    <span class="job-meta" id="projectMeta"></span>
+  </div>
+  <nav class="top-actions" aria-label="Proje işlemleri">
+    <button class="btn ghost" id="openFile" type="button">DXF yükle</button>
+    <button class="btn ghost" id="demo" type="button">Örnek proje</button>
+    <div class="menu" id="exportMenu" hidden>
+      <button class="btn ghost" id="exportToggle" type="button" aria-haspopup="true" aria-expanded="false">Dışa aktar</button>
+      <div class="menu-list" role="menu" hidden>
+        <button role="menuitem" type="button" id="downloadAll">Parça DXF paketi (adet ve kalınlıkla)</button>
+        <button role="menuitem" type="button" id="downloadNest" disabled>Yerleşim plakaları (DXF)</button>
+        <button role="menuitem" type="button" id="downloadCsv">Parça listesi (CSV)</button>
+      </div>
+    </div>
+    <button class="btn ghost" id="reset" type="button" hidden>Yeni proje</button>
+  </nav>
+  <input type="file" id="fileInput" accept=".dxf,.zip" multiple hidden>
+</header>
+
+<main class="station" id="station">
+  <!-- Parts -->
+  <aside class="pane parts-pane" id="partsPane" aria-label="Parçalar">
+    <div class="pane-head">
+      <h2>Parçalar <span class="count" id="partTotal"></span></h2>
+      <input id="partSearch" type="search" placeholder="Parça veya dosya ara" aria-label="Parça ara">
+      <div class="seg" id="filters" role="tablist" aria-label="Parça filtresi">
+        <button class="on" data-filter="all" type="button">Tümü</button>
+        <button data-filter="duplicate" type="button">Tekrarlı</button>
+        <button data-filter="review" type="button">Kontrol</button>
+      </div>
+    </div>
+    <ol class="part-list" id="parts"></ol>
+    <p class="pane-foot" id="partsFoot">Parçaya tıkla: büyüt, delikleri ve ölçüleri kontrol et.</p>
+  </aside>
+
+  <!-- Stage -->
+  <section class="stage" aria-label="Çalışma alanı">
+    <div class="empty-plate" id="drop" tabindex="0" aria-label="DXF veya ZIP dosyasını buraya bırak">
+      <svg class="plate-art" viewBox="0 0 600 300" aria-hidden="true">
+        <rect class="plate-sheet" x="10" y="10" width="580" height="280" rx="3"/>
+        <path class="plate-kerf" pathLength="1" d="M150 70 H330 L410 150 V230 H250 L150 130 Z M228 150 a22 22 0 1 0 44 0 a22 22 0 1 0 -44 0"/>
+        <circle class="plate-spark" r="5"><animateMotion dur="5.2s" repeatCount="1" fill="freeze" path="M150 70 H330 L410 150 V230 H250 L150 130 Z"/></circle>
+      </svg>
+      <div class="empty-copy">
+        <h1>DXF'ini sacın üstüne bırak.</h1>
+        <p>Tek çizim, birden çok DXF ya da ZIP. Parçaları ayırır, birbirine geçirerek yerleştirir, kg ve kesim süresini çıkarır.</p>
+        <div class="empty-actions">
+          <button class="btn primary" id="browse" type="button">Dosya seç</button>
+          <button class="btn quiet" id="demo2" type="button">Örnek projeyi aç</button>
+        </div>
+        <p class="fine">Dosyalar bu bilgisayarda işlenir. En fazla 40 MB.</p>
+      </div>
+    </div>
+
+    <div class="workspace" id="workspace" hidden>
+      <div class="stage-tabs" role="tablist">
+        <button class="tab on" role="tab" data-view="nest" type="button">Yerleşim</button>
+        <button class="tab" role="tab" data-view="report" type="button">Kontrol raporu <span class="badge" id="issueBadge"></span></button>
+      </div>
+      <div class="view" id="viewNest"></div>
+      <div class="view" id="viewReport" hidden></div>
+    </div>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <!-- Settings -->
+  <aside class="pane settings-pane" id="settings" aria-label="Üretim ayarları">
+    <form id="planForm" onsubmit="return false">
+      <fieldset>
+        <legend>Malzeme ve sac</legend>
+        <label class="field">Malzeme
+          <select id="material">
+            <option value="steel">Siyah sac (karbon çelik), 7850 kg/m³</option>
+            <option value="stainless">Paslanmaz, 8000 kg/m³</option>
+            <option value="aluminum">Alüminyum, 2700 kg/m³</option>
+          </select>
+        </label>
+        <label class="field">Sac ölçüsü
+          <select id="sheetPreset">
+            <option value="1500x3000">1500 × 3000 mm</option>
+            <option value="1250x2500">1250 × 2500 mm</option>
+            <option value="1000x2000">1000 × 2000 mm</option>
+            <option value="2000x4000">2000 × 4000 mm</option>
+            <option value="1500x6000">1500 × 6000 mm</option>
+            <option value="custom">Özel ölçü</option>
+          </select>
+        </label>
+        <div class="pair">
+          <label class="field">En <span class="unit">mm</span><input id="sheetWidth" type="number" min="100" max="10000" value="1500"></label>
+          <label class="field">Boy <span class="unit">mm</span><input id="sheetHeight" type="number" min="100" max="20000" value="3000"></label>
+        </div>
+        <label class="check"><input id="confirmMillimeters" type="checkbox"> <span>Çizim birimi mm<small>Birimi tanımsız DXF'leri milimetre kabul et.</small></span></label>
+        <label class="field">Kalınlığı okunamayan parçalar <span class="unit">mm</span><input id="defaultThickness" type="number" min="0.01" max="500" step="0.1" placeholder="Gerekirse gir"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Yerleşim</legend>
+        <div class="seg wide" id="methodSeg" role="radiogroup" aria-label="Yerleşim yöntemi">
+          <button class="on" data-method="shape" type="button" role="radio" aria-checked="true">Gerçek kontur</button>
+          <button data-method="rect" type="button" role="radio" aria-checked="false">Dikdörtgen</button>
+        </div>
+        <label class="field">Döndürme
+          <select id="rotation">
+            <option value="none">Döndürme yok (damar yönü sabit)</option>
+            <option value="180">Sadece 180°</option>
+            <option value="90">90° adımlar</option>
+            <option value="45">45° adımlar</option>
+            <option value="15" selected>15° adımlar</option>
+            <option value="5">5° adımlar (en kapsamlı, yavaş)</option>
+          </select>
+        </label>
+        <label class="field">Optimizasyon
+          <select id="quality">
+            <option value="fast">Hızlı ön bakış</option>
+            <option value="balanced" selected>Dengeli</option>
+            <option value="max">En iyi sonuç (uzun sürer)</option>
+          </select>
+        </label>
+        <div class="pair">
+          <label class="field">Parça arası <span class="unit">mm</span><input id="gap" type="number" min="0" max="50" step="0.5" value="5"></label>
+          <label class="field">Kenar payı <span class="unit">mm</span><input id="margin" type="number" min="0" max="100" value="10"></label>
+        </div>
+        <label class="check"><input id="partInPart" type="checkbox" checked> <span>Delik içine parça yerleştir<small>Büyük deliklerin içi küçük parçalarla doldurulur.</small></span></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Makine</legend>
+        <label class="field">Lazer gücü
+          <select id="laserKw"><option value="">Hızları elle gireceğim</option></select>
+        </label>
+        <div id="speedTable" class="speed-table"></div>
+        <p class="hint" id="speedNote"></p>
+        <div class="pair">
+          <label class="field">Delme <span class="unit">sn</span><input id="pierceSeconds" type="number" min="0" max="120" step="0.1" value="1.5"></label>
+          <label class="field">Ek süre <span class="unit">%</span><input id="overheadPercent" type="number" min="0" max="200" value="15"></label>
+        </div>
+        <label class="field">Tabloda olmayan kalınlıklar <span class="unit">m/dk</span><input id="cuttingSpeed" type="number" min="0.01" max="200" step="0.1" value="3"></label>
+      </fieldset>
+    </form>
+    <div class="run">
+      <button class="btn primary big" id="calculate" type="button" disabled>Yerleşimi hesapla</button>
+      <p class="hint" id="runHint">Önce bir çizim yükle.</p>
+    </div>
+  </aside>
+</main>
+
+<!-- Part inspector -->
+<div class="inspector" id="inspector" role="dialog" aria-modal="true" aria-labelledby="inspTitle" hidden>
+  <div class="insp-frame">
+    <header class="insp-head">
+      <div>
+        <h2 id="inspTitle">Parça</h2>
+        <p id="inspSub"></p>
+      </div>
+      <div class="insp-tools" role="toolbar" aria-label="Görünüm araçları">
+        <div class="seg" id="toolSeg">
+          <button class="on" data-tool="pan" type="button" title="Sürükleyerek kaydır, tekerlekle yakınlaş">Gezin</button>
+          <button data-tool="measure" type="button" title="İki noktaya tıklayarak ölç (M)">Ölç</button>
+        </div>
+        <label class="check inline"><input type="checkbox" id="showDims" checked> <span>Ölçüleri göster</span></label>
+        <button class="btn quiet" id="fitView" type="button">Sığdır</button>
+        <button class="btn quiet" id="prevPart" type="button" aria-label="Önceki parça">‹</button>
+        <button class="btn quiet" id="nextPart" type="button" aria-label="Sonraki parça">›</button>
+        <button class="btn ghost" id="closeInspector" type="button">Kapat</button>
+      </div>
+    </header>
+    <div class="insp-body">
+      <div class="insp-canvas" id="inspCanvas">
+        <svg id="inspSvg" tabindex="0" aria-label="Parça çizimi"></svg>
+        <div class="readout" id="readout"></div>
+      </div>
+      <aside class="insp-side">
+        <div class="stage-tabs small" role="tablist">
+          <button class="tab on" data-itab="dims" type="button">Ölçüler</button>
+          <button class="tab" data-itab="holes" type="button">Delikler <span class="badge" id="holeBadge"></span></button>
+          <button class="tab" data-itab="measure" type="button">Ölçüm <span class="badge" id="measureBadge"></span></button>
+        </div>
+        <div class="itab" id="itabDims"></div>
+        <div class="itab" id="itabHoles" hidden></div>
+        <div class="itab" id="itabMeasure" hidden></div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<script defer src="/static/studio.js?v=09"></script>
+</body>
+</html>

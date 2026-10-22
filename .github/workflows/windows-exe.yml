@@ -1,0 +1,64 @@
+name: Windows exe
+
+# Builds DXFsmart.exe on every version tag (v0.9.1, v0.9.2 ...) and attaches it
+# to a GitHub Release. Can also be started by hand from the Actions tab.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: python -m pip install -r requirements.txt pyinstaller pytest httpx
+
+      - name: Test
+        run: python -m pytest -q tests
+
+      - name: Build exe
+        run: >
+          pyinstaller --noconfirm --onefile --name DXFsmart
+          --add-data "static;static"
+          --collect-submodules uvicorn
+          --collect-submodules ezdxf
+          --hidden-import scipy.signal
+          run.py
+
+      - name: Smoke test exe
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\DXFsmart.exe -PassThru -RedirectStandardOutput out.txt
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            try { $r = Invoke-RestMethod http://127.0.0.1:8000/api/health; if ($r.status -eq "ok") { $ok = $true; break } } catch {}
+            Start-Sleep -Seconds 1
+          }
+          Stop-Process -Id $p.Id -Force
+          if (-not $ok) { Get-Content out.txt; throw "exe did not start" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DXFsmart-windows
+          path: dist/DXFsmart.exe
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DXFsmart.exe
+          body: |
+            **İndir ve çalıştır:** aşağıdaki `DXFsmart.exe` dosyasını indirip çift tıklayın. Python kurmanıza gerek yok.
+            İlk açılışta Windows "bilgisayarınızı korudu" uyarısı verebilir: **Ek bilgi → Yine de çalıştır**.
+            Program bu bilgisayarda çalışır; DXF dosyalarınız internete yüklenmez.
