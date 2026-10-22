@@ -98,6 +98,11 @@ def main():
     sys.path.insert(0, root)
     os.chdir(root)
     from version import VERSION
+    try:
+        import updater
+        updater.cleanup_leftovers()
+    except Exception:
+        pass
     port = free_port()
     if port is None:
         print("8000-8010 portlari kullanimda. Acik DXFsmart pencerelerini kapatip tekrar deneyin.")

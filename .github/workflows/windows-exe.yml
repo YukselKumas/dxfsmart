@@ -78,7 +78,12 @@ jobs:
             try { $r = Invoke-RestMethod http://127.0.0.1:8000/api/health; if ($r.status -eq "ok") { $ok = $true; break } } catch {}
             Start-Sleep -Seconds 1
           }
+          # self-update relies on renaming the running exe: prove it works here
+          $renamed = $true
+          try { Rename-Item dist\DXFsmart.exe DXFsmart.old.exe -ErrorAction Stop; Rename-Item dist\DXFsmart.old.exe DXFsmart.exe -ErrorAction Stop } catch { $renamed = $false; Write-Host $_ }
           Stop-Process -Id $p.Id -Force
+          Get-Process DXFsmart -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $renamed) { throw "running exe could not be renamed" }
           if (-not $ok) { Get-Content "$env:LOCALAPPDATA\DXFsmart\log.txt" -ErrorAction SilentlyContinue; throw "exe did not start" }
 
       - uses: actions/upload-artifact@v4

@@ -2,8 +2,11 @@
 
 * check(): asks the GitHub API for the latest release of the public repo.
 * install(): only in the packaged Windows exe. Downloads the new DXFsmart.exe
-  next to the running one, starts a tiny helper script that waits until this
-  process exits, swaps the files and starts the new version.
+  next to the running one and swaps the files *without any helper script*:
+  Windows allows renaming a running exe, so the running one becomes
+  DXFsmart.old.exe, the download takes its name, the new version is started
+  and this one exits. The next start removes DXFsmart.old.exe.
+  (v1.0 used a cmd helper that could keep flashing console windows.)
 """
 from __future__ import annotations
 
@@ -81,14 +84,56 @@ def install(on_exit) -> None:
     if info.get("assetSize") and size != info["assetSize"]:
         os.remove(new_path)
         raise RuntimeError("İndirilen dosya eksik; tekrar deneyin.")
-    script = os.path.join(tempfile.gettempdir(), "dxfsmart_update.cmd")
-    with open(script, "w", encoding="ascii", errors="ignore") as f:
-        f.write("@echo off\r\n"
-                ":wait\r\n"
-                "timeout /t 1 /nobreak >nul\r\n"
-                f'move /y "{new_path}" "{exe}" >nul 2>&1 || goto wait\r\n'
-                f'start "" "{exe}"\r\n'
-                'del "%~f0"\r\n')
-    flags = 0x00000008 | 0x08000000  # DETACHED_PROCESS | CREATE_NO_WINDOW
-    subprocess.Popen(["cmd", "/c", script], creationflags=flags, close_fds=True)
+    old_path = os.path.join(target_dir, "DXFsmart.old.exe")
+    swap(exe, new_path, old_path)
+    launch(exe)
     threading.Timer(1.0, on_exit).start()
+
+
+def swap(exe, new_path, old_path):
+    """Running exe -> .old, download -> exe name. Rolls back on failure."""
+    try:
+        if os.path.exists(old_path):
+            os.remove(old_path)
+    except OSError:
+        old_path = old_path[:-4] + f".{int(time.time())}.exe"
+    os.replace(exe, old_path)
+    try:
+        os.replace(new_path, exe)
+    except OSError:
+        os.replace(old_path, exe)
+        raise RuntimeError("Yeni sürüm yerine konamadı (dosya kilitli olabilir). Programı kapatıp Releases sayfasından indirin.")
+
+
+def launch(exe):
+    flags = 0x00000008 | 0x00000200 if sys.platform == "win32" else 0  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen([exe], cwd=os.path.dirname(exe), creationflags=flags, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def cleanup_leftovers():
+    """Called at start-up: remove the previous version and stop a v1.0 helper loop."""
+    exe = frozen_exe()
+    if not exe:
+        return
+    folder = os.path.dirname(exe)
+    # v1.0's cmd helper re-reads its script every loop; deleting it ends the loop.
+    for path in [os.path.join(tempfile.gettempdir(), "dxfsmart_update.cmd"),
+                 os.path.join(folder, "DXFsmart.new.exe")]:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    def remove_old():
+        for _ in range(30):
+            left = [f for f in os.listdir(folder) if f.lower().startswith("dxfsmart.old")]
+            for f in left:
+                try:
+                    os.remove(os.path.join(folder, f))
+                except OSError:
+                    pass
+            if not left:
+                return
+            time.sleep(2)
+    threading.Thread(target=remove_old, daemon=True).start()

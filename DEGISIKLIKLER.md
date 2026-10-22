@@ -1,5 +1,8 @@
 # DXFsmart sürüm notları
 
+## 1.1.1
+- **Güncelleme düzeltmesi:** v1.0'daki güncelleyici arka planda bir cmd betiği çalıştırıyordu; bazı bilgisayarlarda bu betik konsol pencerelerini sürekli açıp kapatarak döngüye giriyordu. Artık cmd hiç kullanılmıyor: çalışan exe'nin adı değiştirilir, yeni exe yerine konur ve yeni sürüm doğrudan başlatılır. Takas olmazsa döngüye girmeden hata mesajı gösterilir. Açılışta eski sürümün dosyası ve v1.0'dan kalan betik temizlenir; betik silinince eski döngü de durur.
+
 ## 1.1.0
 - **Yeni yerleşim motoru:** açık kaynak sparrow optimizer'ı (MIT; jagua-rs çarpışma motoru, MPL-2.0) programa gömüldü. sparrow sınırsız tek bir şerit için yazılmıştı. Plaka sınırları şeride yasak bantlar olarak eklendi, böylece optimizer tek aramada hem plaka sayısını hem son plakada kullanılan boyu küçültüyor; hiçbir parça plaka sınırını geçemiyor.
 - **Canlı simülasyon:** yerleşim hesaplanırken optimizer'ın denediği yerleşimler ekranda izlenir. Her satır bir plakadır; kırmızı kesik çizgiler o an çözülen çakışmalardır. İlerleme metni kaç plakaya sığdığını ve doluluğu gösterir.
