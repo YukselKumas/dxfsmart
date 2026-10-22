@@ -29,6 +29,6 @@ python run.py            # http://127.0.0.1:8000
 python -m pip install pytest httpx && python -m pytest -q tests
 ```
 
-Python 3.11–3.13 önerilir. Yeni sürüm yayınlamak için bir etiket gönderin: `git tag v0.9.2 && git push origin v0.9.2`. GitHub Actions testleri çalıştırır, `DXFsmart.exe`'yi üretir, kısa bir çalıştırma testinden geçirir ve Releases sayfasına ekler.
+Python 3.11–3.13 önerilir. `main` dalına yapılan her gönderimde GitHub Actions testleri çalıştırır, `DXFsmart.exe`'yi üretir, kısa bir çalıştırma testinden geçirir ve `run.py` içindeki `VERSION` numarasıyla Releases sayfasına koyar. Yeni sürüm için `VERSION`'ı artırın.
 
 Sürüm notları: [DEGISIKLIKLER.md](DEGISIKLIKLER.md)
