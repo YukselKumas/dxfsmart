@@ -34,7 +34,12 @@ jobs:
         run: python -m pip install -r requirements.txt pyinstaller pytest httpx
 
       - name: Test
-        run: python -m pytest -q tests
+        shell: pwsh
+        run: |
+          python -m pytest -q tests --junitxml=report.xml
+          $code = $LASTEXITCODE
+          python -c "import xml.etree.ElementTree as E;r=E.parse('report.xml').getroot();[print('::error title='+c.get('classname','')+'.'+c.get('name','')+'::'+((f.get('message') or f.text or '')[:600]).replace(chr(10),' | ')) for c in r.iter('testcase') for f in list(c.findall('failure'))+list(c.findall('error'))]"
+          exit $code
 
       - name: Build exe
         run: >
