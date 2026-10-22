@@ -676,10 +676,10 @@ def part_to_bytes(part: Part, move_to_origin: bool = True) -> bytes:
             ezdxf.transform.inplace(copied, Matrix44.translate(-minx, -miny, 0))
         except Exception as exc:
             raise ProcessingError(f"Parçayı sıfıra taşıma başarısız: {exc}") from exc
-    with tempfile.TemporaryDirectory() as tmp:
-        target = Path(tmp) / "part.dxf"
-        doc.saveas(target)
-        return target.read_bytes()
+    # In-memory write: identical bytes on every OS (no CRLF translation on Windows).
+    stream = io.StringIO()
+    doc.write(stream)
+    return stream.getvalue().encode("utf-8")
 
 
 def pack_parts(parts: list[Part], move_to_origin=True) -> bytes:
