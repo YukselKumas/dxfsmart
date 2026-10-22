@@ -22,7 +22,7 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          $v = (Select-String -Path run.py -Pattern '^VERSION = "(.+)"').Matches[0].Groups[1].Value
+          $v = (Select-String -Path version.py -Pattern '^VERSION = "(.+)"').Matches[0].Groups[1].Value
           "version=$v" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-python@v5
@@ -43,24 +43,27 @@ jobs:
 
       - name: Build exe
         run: >
-          pyinstaller --noconfirm --onefile --name DXFsmart
+          pyinstaller --noconfirm --onefile --windowed --name DXFsmart
+          --icon assets/dxfsmart.ico
           --add-data "static;static"
           --collect-submodules uvicorn
           --collect-submodules ezdxf
+          --collect-submodules webview
           --hidden-import scipy.signal
           run.py
 
       - name: Smoke test exe
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath dist\DXFsmart.exe -PassThru -RedirectStandardOutput out.txt
+          $env:DXFSMART_HEADLESS = "1"
+          $p = Start-Process -FilePath dist\DXFsmart.exe -PassThru
           $ok = $false
           for ($i = 0; $i -lt 60; $i++) {
             try { $r = Invoke-RestMethod http://127.0.0.1:8000/api/health; if ($r.status -eq "ok") { $ok = $true; break } } catch {}
             Start-Sleep -Seconds 1
           }
           Stop-Process -Id $p.Id -Force
-          if (-not $ok) { Get-Content out.txt; throw "exe did not start" }
+          if (-not $ok) { Get-Content "$env:LOCALAPPDATA\DXFsmart\log.txt" -ErrorAction SilentlyContinue; throw "exe did not start" }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -76,6 +79,7 @@ jobs:
           make_latest: true
           files: dist/DXFsmart.exe
           body: |
-            **İndir ve çalıştır:** aşağıdaki `DXFsmart.exe` dosyasını indirip çift tıklayın. Python kurmanıza gerek yok.
+            **İndir ve çalıştır:** aşağıdaki `DXFsmart.exe` dosyasını indirip çift tıklayın. Python kurmanıza gerek yok; program kendi penceresinde açılır.
+            Bu sürümden sonra yeni sürümler program içinden tek tıkla güncellenir.
             İlk açılışta Windows "bilgisayarınızı korudu" uyarısı verebilir: **Ek bilgi → Yine de çalıştır**.
             Program bu bilgisayarda çalışır; DXF dosyalarınız internete yüklenmez.

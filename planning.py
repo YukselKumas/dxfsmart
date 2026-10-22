@@ -78,7 +78,7 @@ def _plan_group(batch, req, width, height, method, on_progress, should_stop):
     chosen = full_rect
     shape_info = None
     if method == 'shape':
-        quality = req.get('quality', 'balanced')
+        quality = req.get('quality', 'fast')  # the UI always sends its own choice
         if quality not in QUALITY:
             raise ProcessingError('Optimizasyon seviyesi geçersiz.')
         gap = finite_in_range('Parça boşluğu', req.get('gap', 5), 0, 50)
@@ -109,8 +109,18 @@ def _plan_group(batch, req, width, height, method, on_progress, should_stop):
     count = len(chosen)
     used = _used_length(chosen[-1]['placements'], by_id, width, height) if chosen else 0
     long_side = height if height >= width else width
+    from shapely.affinity import rotate as _rot, translate as _tr
+    from shapely.geometry import Polygon as _Poly
+    from shapely.ops import unary_union as _union
+    solid = {pid: _Poly(p.shape.exterior) for pid, p in by_id.items()}
     for s in chosen:
         s['quantity'] = len(s['placements'])
+        # footprint: area covered by part outlines (their own holes included).
+        # Net utilization counts e.g. a flange's centre hole as waste; the
+        # footprint shows how tightly the layout itself is packed.
+        foot = _union([_tr(_rot(solid[pl['id']], pl['angle'], origin=(0, 0)) if pl['angle'] else solid[pl['id']], pl['tx'], pl['ty'])
+                       for pl in s['placements']]).area
+        s['footprintUtilization'] = round(100 * foot / (width * height), 1)
     plan.update({
         'recommendedSheets': count, 'packingSheets': count,
         'estimatedScrap': round(max(0, 100 * (1 - net_area / (count * width * height))), 1) if count else None,

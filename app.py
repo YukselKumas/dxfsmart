@@ -17,9 +17,11 @@ from demo import sample_files
 from estimate import estimate_sheets, Cancelled
 from planning import estimate_job, planned_parts
 from laser_presets import presets_payload, speed_m_min, POWERS_KW
+from version import VERSION
+import updater
 
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="DXF Akıllı Ayırıcı", version="0.9.1")
+app = FastAPI(title="DXFsmart", version=VERSION)
 
 
 @app.middleware("http")
@@ -310,8 +312,23 @@ def laser_speeds(material: str = 'steel', kw: float = 3, thickness: list[float] 
     return {'material':material,'kw':kw,'speeds':{f'{t:g}':speed_m_min(material,kw,t) for t in thickness}}
 
 
+@app.get("/api/update")
+def update_status():
+    return updater.check()
+
+
+@app.post("/api/update/install")
+def update_install():
+    import os
+    try:
+        updater.install(lambda: os._exit(0))
+    except Exception as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"ok": True}
+
+
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "engine": "ezdxf + shapely", "version": "0.9.1"}
+    return {"status": "ok", "engine": "ezdxf + shapely", "version": VERSION}
 
 

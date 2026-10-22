@@ -5,11 +5,12 @@ Lazer kesim için DXF hazırlık ve planlama aracı. Karışık çizimleri parç
 ## İndir ve çalıştır (Windows)
 
 1. Sağdaki **Releases** bölümünden en son sürümün `DXFsmart.exe` dosyasını indirin.
-2. Dosyaya çift tıklayın. Program birkaç saniyede tarayıcıda açılır.
+2. Çift tıklayın. DXFsmart kendi penceresinde açılır; tarayıcı ya da siyah komut penceresi açılmaz.
 3. İlk açılışta Windows *"bilgisayarınızı korudu"* uyarısı verebilir: **Ek bilgi → Yine de çalıştır**. (Program dijital imzalı olmadığı için çıkan standart uyarıdır.)
-4. Açılan siyah pencere programın kendisidir: kapatınca program da kapanır. O pencerede **Ctrl+C**'ye basmayın.
+4. Yeni sürüm çıktığında program üstte bildirir; **Güncelle**'ye basınca kendini indirip yeniden açılır. Ücretsizdir, GitHub Releases üzerinden çalışır.
 
-Python veya başka bir kurulum gerekmez.
+Python veya başka bir kurulum gerekmez. Pencere, Windows 10/11'de hazır gelen Microsoft Edge WebView2 ile çizilir.
+Bir sorun olursa günlük dosyası: `%LOCALAPPDATA%\DXFsmart\log.txt`
 
 ## Ne yapar
 
@@ -29,6 +30,6 @@ python run.py            # http://127.0.0.1:8000
 python -m pip install pytest httpx && python -m pytest -q tests
 ```
 
-Python 3.11–3.13 önerilir. `main` dalına yapılan her gönderimde GitHub Actions testleri çalıştırır, `DXFsmart.exe`'yi üretir, kısa bir çalıştırma testinden geçirir ve `run.py` içindeki `VERSION` numarasıyla Releases sayfasına koyar. Yeni sürüm için `VERSION`'ı artırın.
+Python 3.11–3.13 önerilir. `pip install pywebview` ile kendi penceresinde, kurulu değilse tarayıcıda açılır. `main` dalına yapılan her gönderimde GitHub Actions testleri çalıştırır, `DXFsmart.exe`'yi üretir, kısa bir çalıştırma testinden geçirir ve `version.py` içindeki `VERSION` numarasıyla Releases sayfasına koyar. Yeni sürüm için `VERSION`'ı artırın; kullanıcılar programın içinden güncelleme bildirimi alır.
 
 Sürüm notları: [DEGISIKLIKLER.md](DEGISIKLIKLER.md)

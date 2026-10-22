@@ -1,4 +1,14 @@
-# DXFsmart / prototip v0.9
+# DXFsmart sürüm notları
+
+## 1.0.0
+- **Masaüstü uygulaması:** kendi penceresinde açılır (Edge WebView2). Tarayıcı ve konsol penceresi yok; pencere kapanınca program kapanır.
+- **Tek tıkla güncelleme:** açılışta GitHub Releases kontrol edilir, yeni sürüm varsa üstte bildirim çıkar; "Güncelle" yeni exe'yi indirir, eskisinin yerine koyar ve yeniden açar. Ücretsiz, hesap gerektirmez.
+- **Yeni tasarım:** gece mavisi zemin, lazer ısı gradyanları (amber, pembe, mor), cam paneller, fırçalanmış çelik sac ve parlak kesilmiş parçalar; yeni uygulama ikonu.
+- **Daha iyi yerleşim:** "Dengeli" ve "En iyi sonuç" modlarına iyileştirme döngüsü eklendi. En iyi stratejiden başlayıp parça gruplarının sırasını değiştirir, grupları parçalara bölüp araya serpiştirir, yerleştirme kuralını, doldurma yönünü ve temas ağırlığını değiştirir; sadece iyileşmeleri tutar. "En iyi sonuç" yaklaşık 3 dakika arar.
+- **İki doluluk ölçüsü:** net doluluk (malzeme verimi) ve kaplanan alan (parçanın kendi delikleri dahil yerleşim sıkılığı). Flanş gibi büyük delikli parçalarda iki değer arasındaki fark, deliğin içinin fire sayılmasından gelir.
+- Parça DXF'leri bellekte üretilir: her işletim sisteminde aynı çıktı.
+
+# Önceki sürüm: prototip v0.9
 
 ## v0.9: Gerçek kontur nesting, makine gücüne göre hız, parça inceleme ve ölçüm
 

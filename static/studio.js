@@ -300,7 +300,8 @@ function renderGroup() {
   const longSide = Math.max(e.sheetWidth, e.sheetHeight);
   $('#groupView').innerHTML = `<div class="sheet-wrap">
       ${sheetSvg(g, sh, 'sheet-svg', true, state.sheetIndex === g.sheets.length - 1)}
-      <div class="sheet-foot"><span>Plaka ${state.sheetIndex + 1}: ${sh.quantity} parça, net doluluk %${fmt(sh.netUtilization, 1)}</span>
+      <div class="sheet-foot"><span>Plaka ${state.sheetIndex + 1}: ${sh.quantity} parça</span>
+        <span class="util-pair" title="Net: parçaların gerçek alanı. Kaplanan: parça dış konturlarının kapladığı alan (parçanın kendi delikleri dahil).">Net doluluk <b>%${fmt(sh.netUtilization, 1)}</b> Kaplanan alan <b>%${fmt(sh.footprintUtilization ?? sh.netUtilization, 1)}</b></span>
         <div class="sheet-nav"><button type="button" id="sheetPrev" aria-label="Önceki plaka">‹</button><span>${state.sheetIndex + 1} / ${g.sheets.length}</span><button type="button" id="sheetNext" aria-label="Sonraki plaka">›</button></div></div>
       ${g.sheets.length > 1 ? `<div class="thumbs">${g.sheets.map((s, i) => `<button type="button" class="sheet-thumb ${i === state.sheetIndex ? 'on' : ''}" data-sheet="${i}">${sheetSvg(g, s, 'sheet-svg mini', false, false)}<span>${i + 1}. plaka, %${fmt(s.netUtilization, 0)}</span></button>`).join('')}</div>` : ''}
     </div>
@@ -673,4 +674,26 @@ document.addEventListener('keydown', ev => {
 });
 window.addEventListener('resize', () => { if (!$('#inspector').hidden) renderInsp(); });
 
-renderIdle(); loadPresets();
+async function checkUpdate() {
+  try {
+    const r = await fetch('/api/update'); if (!r.ok) return;
+    const u = await r.json();
+    if (!u.available) return;
+    let skipped = null; try { skipped = localStorage.getItem('dxfsmart.skip'); } catch (_) { }
+    if (skipped === u.latest) return;
+    $('#updateText').innerHTML = `<b>DXFsmart ${esc(u.latest)}</b> yayında (sende ${esc(u.current)}). ${u.canInstall ? 'Tek tıkla güncelleyip yeniden açabilirim.' : 'GitHub Releases sayfasından indirebilirsin.'}`;
+    $('#updateBtn').textContent = u.canInstall ? 'Güncelle' : 'İndirme sayfası';
+    $('#updateBtn').onclick = async () => {
+      if (!u.canInstall) { window.open(u.url, '_blank'); return; }
+      $('#updateBtn').disabled = true; $('#updateText').innerHTML = '<b>Güncelleniyor…</b> Yeni sürüm indiriliyor, bitince program kendini yeniden açacak.';
+      try {
+        const res = await fetch('/api/update/install', { method: 'POST' }); if (!res.ok) throw Error(await apiError(res));
+        $('#updateText').innerHTML = '<b>Yeniden başlatılıyor…</b> Pencere birkaç saniye içinde yeni sürümle açılacak.';
+      } catch (e) { $('#updateText').textContent = 'Güncellenemedi: ' + e.message; $('#updateBtn').disabled = false; }
+    };
+    $('#updateLater').onclick = () => { try { localStorage.setItem('dxfsmart.skip', u.latest); } catch (_) { } $('#updateBar').hidden = true; document.body.classList.remove('has-update'); };
+    $('#updateBar').hidden = false; document.body.classList.add('has-update');
+  } catch (_) { }
+}
+
+renderIdle(); loadPresets(); checkUpdate();

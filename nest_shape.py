@@ -43,9 +43,10 @@ SQRT2_2 = math.sqrt(2) / 2
 
 QUALITY = {
     # cells: raster size of one sheet, budget: seconds per thickness group
-    "fast": {"cells": 150_000, "budget": 6.0, "strategies": 3},
-    "balanced": {"cells": 320_000, "budget": 30.0, "strategies": 10},
-    "max": {"cells": 700_000, "budget": 100.0, "strategies": 24},
+    # search: share of the budget spent on iterative improvement (local search)
+    "fast": {"cells": 150_000, "budget": 6.0, "strategies": 3, "search": 0.0},
+    "balanced": {"cells": 320_000, "budget": 35.0, "strategies": 10, "search": 0.3},
+    "max": {"cells": 500_000, "budget": 180.0, "strategies": 24, "search": 0.55},
 }
 
 ROTATIONS = {
@@ -362,7 +363,7 @@ class Nester:
         pockets/holes. Only a window of rows/cols that can still win is scored.
         """
         best = None
-        w = self.CONTACT_WEIGHT
+        w = getattr(self, "cw", self.CONTACT_WEIGHT)
         for v, mc in zip(variants, maps):
             if mc is None:
                 continue
@@ -516,16 +517,21 @@ class Nester:
                 contact[a0:a1, b0:b1] += add[a0 - i0:a1 - i0, b0 - j0:b1 - j0]
 
     # --------------------------------------------------------------- run
-    def _run_once(self, uset, order, rule, along_long, total, done_before, budget_end, coarse=False):
+    def _run_once(self, uset, order, rule, along_long, total, done_before, budget_end, coarse=False, cw=None):
+        """One greedy layout. ``order`` items are keys or (key, limit) chunks:
+        a chunk places at most ``limit`` copies per sheet visit, so a group can
+        be split and its rest placed later (lets small parts fill gaps early)."""
         self.y_primary = self.long_y if along_long else not self.long_y
-        remaining = {k: uset[k].quantity for k in order}
+        self.cw = self.CONTACT_WEIGHT if cw is None else cw
+        items = [it if isinstance(it, tuple) else (it, None) for it in order]
+        remaining = {k: uset[k].quantity for k in {k for k, _ in items}}
         unit_total = max(1, sum(remaining.values()))
         sheets: list[Sheet] = []
         usable_area = (self.W - 2 * self.margin) * (self.H - 2 * self.margin)
         placed_count = 0
         while any(remaining.values()):
             sheet = Sheet(self.ny, self.nx)
-            for key in order:
+            for key, limit in items:
                 if remaining[key] == 0:
                     continue
                 u = uset[key]
@@ -533,7 +539,8 @@ class Nester:
                     continue
                 variants = u.coarse if coarse else u.variants
                 maps = self._group_maps(sheet, variants)
-                while remaining[key] > 0:
+                visit = 0
+                while remaining[key] > 0 and (limit is None or visit < limit):
                     if self.should_stop and self.should_stop():
                         raise NestCancelled()
                     best = self._best(maps, variants, rule, self._used_length(sheet))
@@ -549,6 +556,7 @@ class Nester:
                     sheet.add(Placement(key, v.angle, tx, ty, geom))
                     self._mark(sheet, geom, maps, variants)
                     remaining[key] -= 1
+                    visit += 1
                     placed_count += 1
                     if self.progress and placed_count % 5 == 0:
                         self.progress(done_before + int(1000 * placed_count / unit_total), total)
@@ -610,7 +618,7 @@ class Nester:
         for i in range(max(len(o) for o in per_set.values())):
             for name in names:
                 if i < len(per_set[name]):
-                    plan.append((name, *per_set[name][i]))
+                    plan.append((name, *per_set[name][i], self.CONTACT_WEIGHT))
         plan = plan[: max(1, self.q["strategies"] * len(names))]
         budget = self.q["budget"]
         fine = any(len(u.variants) > len(u.coarse) for U in sets.values() for u in U.values())
@@ -636,18 +644,48 @@ class Nester:
         # Phase 1: many part orders / fill rules / unit sets. With fine angle
         # steps this phase uses only 0/90/180/270, which is several times
         # faster, so far more strategies fit in the time budget.
-        phase1_end = start + (budget * 0.45 if fine else budget)
+        search = self.q.get("search", 0.0)
+        phase1_share = 0.35 if fine else max(0.3, 1.0 - search)
+        phase1_end = start + budget * phase1_share
         ranking = []
-        for n, (set_name, label, rule, along_long, order) in enumerate(plan):
+        for n, (set_name, label, rule, along_long, order, cw) in enumerate(list(plan)):
             if n > 0 and time.monotonic() > phase1_end:
                 break
             current_set[0] = set_name
-            sheets = self._run_once(sets[set_name], order, rule, along_long, grand_total, done_runs * 1000, phase1_end, coarse=fine)
+            sheets = self._run_once(sets[set_name], order, rule, along_long, grand_total, done_runs * 1000, phase1_end, coarse=fine, cw=cw)
             done_runs += 1
             if sheets is None:
                 break
             score = consider(sheets, name_of(set_name, label) + (", 90° tarama" if fine else ""))
             ranking.append((score, n))
+        # Phase 1b: local search from the best strategy. Mutations: swap / move
+        # part groups, split a group into two chunks, change fill rule, fill
+        # axis or contact weight. Only improvements are kept.
+        if search > 0 and ranking:
+            ranking.sort()
+            search_end = start + budget * min(0.95, phase1_share + search)
+            cur_score, n0 = ranking[0]
+            cur = plan[n0]
+            it = 0
+            while time.monotonic() < search_end:
+                cand = self._mutate(cur, sets)
+                it += 1
+                current_set[0] = cand[0]
+                sheets = self._run_once(sets[cand[0]], cand[4], cand[2], cand[3], grand_total, done_runs * 1000,
+                                        search_end, coarse=fine, cw=cand[5])
+                if sheets is None:
+                    break
+                score = (len(sheets), self._used_length(sheets[-1], self.long_y))
+                if score < cur_score:
+                    cand = (cand[0], f"Optimizasyon adımı {it}", *cand[2:])
+                    cur, cur_score = cand, score
+                    plan.append(cand)
+                    ranking.append((score, len(plan) - 1))
+                    consider(sheets, name_of(cand[0], cand[1]) + (", 90° tarama" if fine else ""))
+                if self.progress:
+                    frac = (time.monotonic() - start) / budget
+                    self.progress(int(grand_total * min(0.9, frac)), grand_total)
+            self.search_iterations = it
         # Phase 2: the two best strategies again with every allowed angle.
         if fine:
             ranking.sort()
@@ -655,10 +693,10 @@ class Nester:
             for k, (_, n) in enumerate(ranking[:2]):
                 if k > 0 and time.monotonic() > budget_end:
                     break
-                set_name, label, rule, along_long, order = plan[n]
+                set_name, label, rule, along_long, order, cw = plan[n]
                 current_set[0] = set_name
                 sheets = self._run_once(sets[set_name], order, rule, along_long, grand_total, done_runs * 1000,
-                                        budget_end if k > 0 else float("inf"))
+                                        budget_end if k > 0 else float("inf"), cw=cw)
                 done_runs += 1
                 if sheets is None:
                     break
@@ -672,6 +710,48 @@ class Nester:
                 "seconds": round(time.monotonic() - start, 2), "cell": round(self.r, 2),
                 "pairs": sorted(k.split("|", 1)[1] for k in sets.get("pair", {}) if k.startswith("PAIR|")),
                 "anglesPerPart": {k: [v.angle for v in u.variants] for k, u in sets["single"].items()}}
+
+    def _mutate(self, entry, sets):
+        set_name, label, rule, along_long, order, cw = entry
+        U = sets[set_name]
+        items = [it if isinstance(it, tuple) else (it, None) for it in order]
+        rng = self.rng
+        r = rng.random()
+        n = len(items)
+        if r < 0.28 and n > 1:                       # swap two groups
+            a, b = rng.sample(range(n), 2)
+            items[a], items[b] = items[b], items[a]
+        elif r < 0.50 and n > 1:                     # move one group
+            a = rng.randrange(n)
+            it = items.pop(a)
+            items.insert(rng.randrange(n), it)
+        elif r < 0.70:                               # split a group into chunks
+            cands = [i for i, (k, lim) in enumerate(items) if lim is None and U[k].quantity >= 4]
+            if cands:
+                i = rng.choice(cands)
+                k = items[i][0]
+                first = rng.randint(1, max(1, U[k].quantity // 2))
+                items[i] = (k, first)
+                items.insert(rng.randint(i + 1, len(items)), (k, None))
+        elif r < 0.82:                               # fill rule
+            rule = rng.choice([x for x in ("edge", "bl", "diag") if x != rule])
+        elif r < 0.94:                               # contact weight
+            cw = rng.choice([x for x in (0.15, 0.25, 0.35, 0.5, 0.75, 1.0) if x != cw])
+        else:                                        # fill axis
+            along_long = not along_long
+        # merge consecutive chunks of the same group
+        merged = []
+        for k, lim in items:
+            if merged and merged[-1][0] == k:
+                pl = merged[-1][1]
+                merged[-1] = (k, None if pl is None or lim is None else pl + lim)
+            else:
+                merged.append((k, lim))
+        # every group needs a final open chunk so all copies get placed
+        keys_with_open = {k for k, lim in merged if lim is None}
+        for k in {k for k, _ in merged} - keys_with_open:
+            merged.append((k, None))
+        return (set_name, label, rule, along_long, merged, cw)
 
     def _improve_tail(self, best, deadline, tried):
         """Re-nest the last two sheets together to free a long remnant strip.
@@ -707,6 +787,7 @@ class Nester:
                     u = self.unit_sets["single"][key]
                     sub[key] = Unique(key, u.shape, n, u.area, u.variants, u.coarse)
             for o_label, rule, along_long, order in self._orders(sub)[:8]:
+                self.cw = self.CONTACT_WEIGHT
                 if time.monotonic() > deadline:
                     break
                 res = self._run_once(sub, order, rule, along_long, 1, 0, deadline)

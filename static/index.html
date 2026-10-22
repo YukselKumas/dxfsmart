@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#15293a">
+<meta name="theme-color" content="#070a17">
 <title>DXFsmart</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2315293a'/%3E%3Cpath d='M7 9h12l6 6v8H13l-6-6z' fill='none' stroke='%23c9922a' stroke-width='2.4'/%3E%3Ccircle cx='17' cy='16' r='2.6' fill='%23c9922a'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="/static/studio.css?v=09">
+<link rel="icon" href="/static/icon.png">
+<link rel="stylesheet" href="/static/studio.css?v=10">
 </head>
 <body>
 <header class="topbar">
   <a class="brand" href="#" aria-label="DXFsmart ana ekran">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 8h14l8 8v8H13L5 16z"/><circle cx="16" cy="16" r="3"/></svg>
+    <img src="/static/icon.png" alt="" width="30" height="30">
     <span>DXFsmart</span>
   </a>
   <div class="job" id="job" hidden>
@@ -33,6 +33,30 @@
   </nav>
   <input type="file" id="fileInput" accept=".dxf,.zip" multiple hidden>
 </header>
+
+<div class="update-bar" id="updateBar" hidden role="status">
+  <span id="updateText"></span>
+  <button class="btn primary" id="updateBtn" type="button">Güncelle</button>
+  <button class="btn quiet" id="updateLater" type="button">Sonra</button>
+</div>
+
+<!-- shared paint for every drawing: brushed steel bed, freshly cut metal -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="bedSteel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b4669"/><stop offset=".45" stop-color="#2a3354"/><stop offset=".55" stop-color="#323c60"/><stop offset="1" stop-color="#252d4b"/>
+    </linearGradient>
+    <linearGradient id="plateSteel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3e4a70"/><stop offset=".5" stop-color="#28304f"/><stop offset="1" stop-color="#343f63"/>
+    </linearGradient>
+    <linearGradient id="cutMetal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#e3e8fb"/><stop offset="1" stop-color="#c7cff0"/>
+    </linearGradient>
+    <linearGradient id="partMetal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4f6ff"/><stop offset=".6" stop-color="#d9def5"/><stop offset="1" stop-color="#b9c2e8"/>
+    </linearGradient>
+  </defs>
+</svg>
 
 <main class="station" id="station">
   <!-- Parts -->
@@ -200,6 +224,6 @@
   </div>
 </div>
 
-<script defer src="/static/studio.js?v=09"></script>
+<script defer src="/static/studio.js?v=10"></script>
 </body>
 </html>
